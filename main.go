@@ -28,9 +28,8 @@ func main() {
 var upgrader = websocket.Upgrader{}
 
 type Player struct {
-	ID int `json:"id"`
-	X  int `json:"x"`
-	Y  int `json:"y"`
+	ID       int         `json:"id"`
+	Position Coordinates `json:"position"`
 }
 
 type Message struct {
@@ -38,17 +37,26 @@ type Message struct {
 	Data any    `json:"data"`
 }
 
+type ClientMessage struct {
+	Type string `json:"type"`
+	Data Player `json:"data"`
+}
+
 type InitMessage struct {
-	ID      int     `json:"id"`
-	Players Players `json:"players"`
+	PlayerID    int     `json:"player_id"`
+	Players     Players `json:"players"`
+	WorldWidth  int     `json:"world_width"`
+	WorldHeight int     `json:"world_height"`
+	PlayerSpeed int     `json:"player_speed"`
+	PlayerSize  int     `json:"player_size"`
 }
 
 type Coordinates struct {
-	X int `json:"x"`
-	Y int `json:"y"`
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
 }
 
-type Players map[int]Coordinates
+type Players map[int]Player
 
 var (
 	nextID          = 0
@@ -59,13 +67,16 @@ var (
 func handleWebsocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		fmt.Printf("Failed to upgrade connection: %v\n", err)
+		http.Error(w, "Failed to upgrade connection", http.StatusInternalServerError)
+		return
 	}
 	defer func() {
 		conn.Close()
+		mu.Lock()
 		id := connections[conn]
 		delete(connections, conn)
 		delete(players, id)
+		mu.Unlock()
 		fmt.Printf("Player %d disconnected.\n", id)
 		for conn := range connections {
 			err = conn.WriteJSON(Message{Type: "disconnect", Data: id})
@@ -77,20 +88,20 @@ func handleWebsocket(w http.ResponseWriter, r *http.Request) {
 
 	mu.Lock()
 	nextID++
-	players[nextID] = Coordinates{X: 200, Y: 200}
+	players[nextID] = Player{Position: Coordinates{X: 200, Y: 200}}
 	connections[conn] = nextID
 	mu.Unlock()
 
 	fmt.Printf("Player %d connected.\n", nextID)
 
-	err = conn.WriteJSON(Message{Type: "init", Data: InitMessage{ID: nextID, Players: players}})
+	err = conn.WriteJSON(Message{Type: "init", Data: InitMessage{PlayerID: nextID, PlayerSize: 50, PlayerSpeed: 5, Players: players, WorldWidth: 2500, WorldHeight: 2500}})
 	if err != nil {
 		fmt.Printf("Error writing to connection: %v\n", err)
 	}
 
 	for conn, id := range connections {
 		if id != nextID {
-			err = conn.WriteJSON(Message{Type: "connect", Data: Player{ID: nextID, X: 200, Y: 200}})
+			err = conn.WriteJSON(Message{Type: "connect", Data: Player{ID: nextID, Position: Coordinates{X: 200, Y: 200}}})
 			if err != nil {
 				fmt.Printf("Error writing (broadcast \"connect\") to connection: %v\n", err)
 			}
@@ -98,20 +109,25 @@ func handleWebsocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for {
-		msg := Message{}
+		msg := ClientMessage{}
 		err = conn.ReadJSON(&msg)
 		if err != nil {
 			return
 		}
 
 		if msg.Type == "pos_update" {
-			for conn, id := range connections {
-				if id != msg.Data {
-					err = conn.WriteJSON(Message{Type: "pos_update", Data: msg.Data})
-					if err != nil {
-						fmt.Printf("Error writing (broadcast \"pos_update\") to connection: %v\n", err)
-					}
+			// fmt.Printf("Message from client: %v\n", msg)
+
+			mu.Lock()
+			players[msg.Data.ID] = Player{Position: Coordinates{X: msg.Data.Position.X, Y: msg.Data.Position.Y}}
+			mu.Unlock()
+			for conn := range connections {
+				// if id != msg.Data.ID {
+				err = conn.WriteJSON(Message{Type: "pos_update", Data: msg.Data})
+				if err != nil {
+					fmt.Printf("Error writing (broadcast \"pos_update\") to connection: %v\n", err)
 				}
+				// }
 			}
 		}
 	}

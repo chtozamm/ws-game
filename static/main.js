@@ -1,189 +1,32 @@
-var conn = new WebSocket("ws://" + document.location.host + "/ws");
-var GameState;
-(function (GameState) {
-    GameState[GameState["INITIALIZING"] = 0] = "INITIALIZING";
-    GameState[GameState["RUNNING"] = 1] = "RUNNING";
-})(GameState || (GameState = {}));
-var currentGameState = GameState.INITIALIZING;
-var game = {
-    localPlayerId: 0,
-    localPlayerSize: 0,
-    playerSpeed: 0,
-    worldHeight: 0,
-    worldWidth: 0,
-    players: {},
-};
-function setPlayer(playerId, position) {
-    game.players[playerId] = { position: position };
-}
-function deletePlayer(playerId) {
-    delete game.players[playerId];
-}
-conn.onmessage = function (ev) {
-    var message = JSON.parse(ev.data);
-    switch (message.type) {
-        case "init":
-            var initData = message.data;
-            game.localPlayerId = initData.player_id;
-            game.localPlayerSize = initData.player_size;
-            game.playerSpeed = initData.player_speed;
-            game.worldWidth = initData.world_width;
-            game.worldHeight = initData.world_height;
-            game.players = initData.players;
-            currentGameState = GameState.RUNNING;
-            break;
-        case "connect":
-            var connectData = message.data;
-            setPlayer(connectData.id, { x: connectData.position.x, y: connectData.position.y });
-            break;
-        case "disconnect":
-            deletePlayer(message.data);
-            break;
-        case "pos_update":
-            var posUpdateData = message.data;
-            setPlayer(posUpdateData.id, { x: posUpdateData.position.x, y: posUpdateData.position.y });
-            break;
-    }
-};
-var canvas = document.getElementById("gameCanvas");
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
-var camera = {
-    x: 0,
-    y: 0,
-};
-var keysPressed = {};
-var KEY_W = "w";
-var KEY_A = "a";
-var KEY_S = "s";
-var KEY_D = "d";
-var KEY_UP = "ArrowUp";
-var KEY_DOWN = "ArrowDown";
-var KEY_LEFT = "ArrowLeft";
-var KEY_RIGHT = "ArrowRight";
-addEventListener("keydown", function (ev) {
-    keysPressed[ev.key] = true;
-});
-addEventListener("keyup", function (ev) {
-    keysPressed[ev.key] = false;
-});
-function updatePlayerPosition() {
-    var moveX = 0;
-    var moveY = 0;
-    if (keysPressed[KEY_W] || keysPressed[KEY_UP]) {
-        if (game.players[game.localPlayerId].position.y > 0) {
-            moveY = -1;
-        }
-    }
-    if (keysPressed[KEY_S] || keysPressed[KEY_DOWN]) {
-        if (game.players[game.localPlayerId].position.y <
-            game.worldHeight - game.localPlayerSize) {
-            moveY = 1;
-        }
-    }
-    if (keysPressed[KEY_A] || keysPressed[KEY_LEFT]) {
-        if (game.players[game.localPlayerId].position.x > 0) {
-            moveX = -1;
-        }
-    }
-    if (keysPressed[KEY_D] || keysPressed[KEY_RIGHT]) {
-        if (game.players[game.localPlayerId].position.x <
-            game.worldWidth - game.localPlayerSize) {
-            moveX = 1;
-        }
-    }
-    // Normalize the movement vector if both axes are pressed
-    var length = Math.sqrt(moveX * moveX + moveY * moveY);
-    if (length > 0) {
-        moveX /= length;
-        moveY /= length;
-    }
-    var newX = Math.min(Math.max(game.players[game.localPlayerId].position.x + moveX * game.playerSpeed, 0), game.worldWidth - game.localPlayerSize);
-    var newY = Math.min(Math.max(game.players[game.localPlayerId].position.y + moveY * game.playerSpeed, 0), game.worldHeight - game.localPlayerSize);
-    var msg = {
-        type: "pos_update",
-        data: {
-            id: game.localPlayerId,
-            position: {
-                x: newX,
-                y: newY
-            }
-        },
-    };
-    // Send player position if moved
-    if (moveX !== 0 || moveY !== 0) {
-        conn.send(JSON.stringify(msg));
-    }
-    // Update camera position to center on the player
-    var halfCanvasWidth = canvas.width / 2;
-    var halfCanvasHeight = canvas.height / 2;
-    camera.x = Math.max(0, Math.min(game.players[game.localPlayerId].position.x -
-        halfCanvasWidth +
-        game.localPlayerSize / 2, game.worldWidth - canvas.width));
-    camera.y = Math.max(0, Math.min(game.players[game.localPlayerId].position.y -
-        halfCanvasHeight +
-        game.localPlayerSize / 2, game.worldHeight - canvas.height));
-}
-var ctx = canvas.getContext("2d");
-var score = 0;
-function drawScore() {
-    ctx.fillStyle = 'white';
-    ctx.strokeStyle = 'black';
-    ctx.lineWidth = 2;
-    ctx.font = '20px Arial';
-    ctx.strokeText("Score: ".concat(score), 10, 30);
-    ctx.fillText("Score: ".concat(score), 10, 30);
-}
-function drawPlayers() {
-    // Calculate camera offsets
-    var offsetX = game.players[game.localPlayerId].position.x - camera.x;
-    var offsetY = game.players[game.localPlayerId].position.y - camera.y;
-    // Draw local player
-    ctx.fillStyle = "orange";
-    ctx.fillRect(offsetX, offsetY, game.localPlayerSize, game.localPlayerSize);
-    // Draw other players
-    ctx.fillStyle = "gray";
-    Object.keys(game.players).forEach(function (playerId) {
-        if (+playerId !== game.localPlayerId) {
-            ctx.fillRect(game.players[+playerId].position.x - camera.x, game.players[+playerId].position.y - camera.y, game.localPlayerSize, game.localPlayerSize);
-        }
-    });
-}
-function drawBackground() {
-    var tileSize = 200;
-    var lightTileColor = "#6b7c7f";
-    var darkTileColor = "#abc6cb";
-    var startX = Math.floor(camera.x / tileSize) * tileSize;
-    var startY = Math.floor(camera.y / tileSize) * tileSize;
-    // Calculate the number of tiles to draw based on the world dimensions
-    var numTilesX = Math.ceil(game.worldWidth / tileSize) + 1; // +1 to ensure we cover the right edge
-    var numTilesY = Math.ceil(game.worldHeight / tileSize) + 1; // +1 to ensure we cover the bottom edge
-    // Loop through the number of tiles to draw
-    for (var y = 0; y < numTilesY; y++) {
-        for (var x = 0; x < numTilesX; x++) {
-            // Calculate the actual position of the tile
-            var tileX = startX + x * tileSize;
-            var tileY = startY + y * tileSize;
-            // Determine the color based on the tile's position
-            var isLightTile = (Math.floor(tileX / tileSize) + Math.floor(tileY / tileSize)) % 2 === 0;
-            ctx.fillStyle = isLightTile ? lightTileColor : darkTileColor;
-            ctx.fillRect(tileX - camera.x, tileY - camera.y, tileSize, tileSize);
-        }
-    }
-}
-function render() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawBackground();
-    drawPlayers();
-    drawScore();
-}
-function gameLoop() {
-    if (currentGameState === GameState.RUNNING) {
-        updatePlayerPosition();
-        render();
-    }
-    requestAnimationFrame(gameLoop);
-}
-conn.onopen = function () {
-    gameLoop();
-};
+/*
+ * ATTENTION: The "eval" devtool has been used (maybe by default in mode: "development").
+ * This devtool is neither made for production nor for readable output files.
+ * It uses "eval()" calls to create a separate source file in the browser devtools.
+ * If you are trying to read the output file, select a different devtool (https://webpack.js.org/configuration/devtool/)
+ * or disable the default devtool with "devtool: false".
+ * If you are looking for production-ready output files, see mode: "production" (https://webpack.js.org/configuration/mode/).
+ */
+/******/ (() => { // webpackBootstrap
+/******/ 	var __webpack_modules__ = ({
+
+/***/ "./src/main.ts":
+/*!*********************!*\
+  !*** ./src/main.ts ***!
+  \*********************/
+/***/ (() => {
+
+eval("var conn = new WebSocket(\"ws://\" + document.location.host + \"/ws\");\nvar GameState;\n(function (GameState) {\n    GameState[GameState[\"INITIALIZING\"] = 0] = \"INITIALIZING\";\n    GameState[GameState[\"RUNNING\"] = 1] = \"RUNNING\";\n})(GameState || (GameState = {}));\nvar currentGameState = GameState.INITIALIZING;\nvar game = {\n    localPlayerId: 0,\n    localPlayerSize: 0,\n    playerSpeed: 0,\n    worldHeight: 0,\n    worldWidth: 0,\n    players: {},\n};\nfunction setPlayer(playerId, position) {\n    game.players[playerId] = { position: position };\n}\nfunction deletePlayer(playerId) {\n    delete game.players[playerId];\n}\nconn.onmessage = function (ev) {\n    var message = JSON.parse(ev.data);\n    switch (message.type) {\n        case \"init\":\n            var initData = message.data;\n            game.localPlayerId = initData.player_id;\n            game.localPlayerSize = initData.player_size;\n            game.playerSpeed = initData.player_speed;\n            game.worldWidth = initData.world_width;\n            game.worldHeight = initData.world_height;\n            game.players = initData.players;\n            currentGameState = GameState.RUNNING;\n            break;\n        case \"connect\":\n            var connectData = message.data;\n            setPlayer(connectData.id, {\n                x: connectData.position.x,\n                y: connectData.position.y,\n            });\n            break;\n        case \"disconnect\":\n            deletePlayer(message.data);\n            break;\n        case \"pos_update\":\n            var posUpdateData = message.data;\n            setPlayer(posUpdateData.id, {\n                x: posUpdateData.position.x,\n                y: posUpdateData.position.y,\n            });\n            break;\n    }\n};\nvar canvas = document.getElementById(\"gameCanvas\");\ncanvas.width = window.innerWidth;\ncanvas.height = window.innerHeight;\nvar camera = {\n    x: 0,\n    y: 0,\n};\nvar keysPressed = {};\nvar KEY_W = \"w\";\nvar KEY_A = \"a\";\nvar KEY_S = \"s\";\nvar KEY_D = \"d\";\nvar KEY_UP = \"ArrowUp\";\nvar KEY_DOWN = \"ArrowDown\";\nvar KEY_LEFT = \"ArrowLeft\";\nvar KEY_RIGHT = \"ArrowRight\";\naddEventListener(\"keydown\", function (ev) {\n    keysPressed[ev.key] = true;\n});\naddEventListener(\"keyup\", function (ev) {\n    keysPressed[ev.key] = false;\n});\nfunction updatePlayerPosition() {\n    var moveX = 0;\n    var moveY = 0;\n    if (keysPressed[KEY_W] || keysPressed[KEY_UP]) {\n        if (game.players[game.localPlayerId].position.y > 0) {\n            moveY = -1;\n        }\n    }\n    if (keysPressed[KEY_S] || keysPressed[KEY_DOWN]) {\n        if (game.players[game.localPlayerId].position.y <\n            game.worldHeight - game.localPlayerSize) {\n            moveY = 1;\n        }\n    }\n    if (keysPressed[KEY_A] || keysPressed[KEY_LEFT]) {\n        if (game.players[game.localPlayerId].position.x > 0) {\n            moveX = -1;\n        }\n    }\n    if (keysPressed[KEY_D] || keysPressed[KEY_RIGHT]) {\n        if (game.players[game.localPlayerId].position.x <\n            game.worldWidth - game.localPlayerSize) {\n            moveX = 1;\n        }\n    }\n    // Normalize the movement vector if both axes are pressed\n    var length = Math.sqrt(moveX * moveX + moveY * moveY);\n    if (length > 0) {\n        moveX /= length;\n        moveY /= length;\n    }\n    var newX = Math.min(Math.max(game.players[game.localPlayerId].position.x + moveX * game.playerSpeed, 0), game.worldWidth - game.localPlayerSize);\n    var newY = Math.min(Math.max(game.players[game.localPlayerId].position.y + moveY * game.playerSpeed, 0), game.worldHeight - game.localPlayerSize);\n    var msg = {\n        type: \"pos_update\",\n        data: {\n            id: game.localPlayerId,\n            position: {\n                x: newX,\n                y: newY,\n            },\n        },\n    };\n    // Send player position if moved\n    if (moveX !== 0 || moveY !== 0) {\n        conn.send(JSON.stringify(msg));\n    }\n    // Update camera position to center on the player\n    var halfCanvasWidth = canvas.width / 2;\n    var halfCanvasHeight = canvas.height / 2;\n    camera.x = Math.max(0, Math.min(game.players[game.localPlayerId].position.x -\n        halfCanvasWidth +\n        game.localPlayerSize / 2, game.worldWidth - canvas.width));\n    camera.y = Math.max(0, Math.min(game.players[game.localPlayerId].position.y -\n        halfCanvasHeight +\n        game.localPlayerSize / 2, game.worldHeight - canvas.height));\n}\nvar ctx = canvas.getContext(\"2d\");\nvar score = 0;\nfunction drawScore() {\n    ctx.fillStyle = \"white\";\n    ctx.strokeStyle = \"black\";\n    ctx.lineWidth = 2;\n    ctx.font = \"20px Arial\";\n    ctx.strokeText(\"Score: \".concat(score), 10, 30);\n    ctx.fillText(\"Score: \".concat(score), 10, 30);\n}\nfunction drawPlayers() {\n    // Calculate camera offsets\n    var offsetX = game.players[game.localPlayerId].position.x - camera.x;\n    var offsetY = game.players[game.localPlayerId].position.y - camera.y;\n    // Draw local player\n    ctx.fillStyle = \"orange\";\n    ctx.fillRect(offsetX, offsetY, game.localPlayerSize, game.localPlayerSize);\n    // Draw other players\n    ctx.fillStyle = \"gray\";\n    Object.keys(game.players).forEach(function (playerId) {\n        if (+playerId !== game.localPlayerId) {\n            ctx.fillRect(game.players[+playerId].position.x - camera.x, game.players[+playerId].position.y - camera.y, game.localPlayerSize, game.localPlayerSize);\n        }\n    });\n}\nfunction drawBackground() {\n    var tileSize = 200;\n    var lightTileColor = \"#6b7c7f\";\n    var darkTileColor = \"#abc6cb\";\n    var startX = Math.floor(camera.x / tileSize) * tileSize;\n    var startY = Math.floor(camera.y / tileSize) * tileSize;\n    // Calculate the number of tiles to draw based on the world dimensions\n    var numTilesX = Math.ceil(game.worldWidth / tileSize) + 1; // +1 to ensure we cover the right edge\n    var numTilesY = Math.ceil(game.worldHeight / tileSize) + 1; // +1 to ensure we cover the bottom edge\n    // Loop through the number of tiles to draw\n    for (var y = 0; y < numTilesY; y++) {\n        for (var x = 0; x < numTilesX; x++) {\n            // Calculate the actual position of the tile\n            var tileX = startX + x * tileSize;\n            var tileY = startY + y * tileSize;\n            // Determine the color based on the tile's position\n            var isLightTile = (Math.floor(tileX / tileSize) + Math.floor(tileY / tileSize)) % 2 === 0;\n            ctx.fillStyle = isLightTile ? lightTileColor : darkTileColor;\n            ctx.fillRect(tileX - camera.x, tileY - camera.y, tileSize, tileSize);\n        }\n    }\n}\nfunction render() {\n    ctx.clearRect(0, 0, canvas.width, canvas.height);\n    drawBackground();\n    drawPlayers();\n    drawScore();\n}\nfunction gameLoop() {\n    if (currentGameState === GameState.RUNNING) {\n        updatePlayerPosition();\n        render();\n    }\n    requestAnimationFrame(gameLoop);\n}\nconn.onopen = function () {\n    gameLoop();\n};\n\n\n//# sourceURL=webpack:///./src/main.ts?");
+
+/***/ })
+
+/******/ 	});
+/************************************************************************/
+/******/ 	
+/******/ 	// startup
+/******/ 	// Load entry module and return exports
+/******/ 	// This entry module can't be inlined because the eval devtool is used.
+/******/ 	var __webpack_exports__ = {};
+/******/ 	__webpack_modules__["./src/main.ts"]();
+/******/ 	
+/******/ })()
+;

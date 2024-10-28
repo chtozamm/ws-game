@@ -5,11 +5,11 @@ enum GameState {
   RUNNING,
 }
 
-let currentGameState: GameState = GameState.INITIALIZING;
+let currentGameState: GameState = GameState.INITIALIZING
 
 interface Coordinates {
-  x: number;
-  y: number;
+  x: number
+  y: number
 }
 
 type PlayerID = number
@@ -24,12 +24,12 @@ interface Players {
 }
 
 interface InitData {
-  player_id: number;
-  player_size: number;
-  player_speed: number;
-  world_width: number;
-  world_height: number;
-  players: Players;
+  player_id: number
+  player_size: number
+  player_speed: number
+  world_width: number
+  world_height: number
+  players: Players
 }
 
 interface ServerMessage {
@@ -79,18 +79,24 @@ conn.onmessage = (ev) => {
       game.worldWidth = initData.world_width
       game.worldHeight = initData.world_height
       game.players = initData.players
-      currentGameState = GameState.RUNNING;
+      currentGameState = GameState.RUNNING
       break
     case "connect":
       const connectData = message.data as Player
-      setPlayer(connectData.id, { x: connectData.position.x, y: connectData.position.y })
+      setPlayer(connectData.id, {
+        x: connectData.position.x,
+        y: connectData.position.y,
+      })
       break
     case "disconnect":
       deletePlayer(message.data as PlayerID)
       break
     case "pos_update":
       const posUpdateData = message.data as Player
-      setPlayer(posUpdateData.id, { x: posUpdateData.position.x, y: posUpdateData.position.y })
+      setPlayer(posUpdateData.id, {
+        x: posUpdateData.position.x,
+        y: posUpdateData.position.y,
+      })
       break
   }
 }
@@ -104,24 +110,24 @@ const camera = {
   y: 0,
 }
 
-const keysPressed: { [key: string]: boolean } = {};
+const keysPressed: { [key: string]: boolean } = {}
 
-const KEY_W = "w";
-const KEY_A = "a";
-const KEY_S = "s";
-const KEY_D = "d";
-const KEY_UP = "ArrowUp";
-const KEY_DOWN = "ArrowDown";
-const KEY_LEFT = "ArrowLeft";
-const KEY_RIGHT = "ArrowRight";
+const KEY_W = "w"
+const KEY_A = "a"
+const KEY_S = "s"
+const KEY_D = "d"
+const KEY_UP = "ArrowUp"
+const KEY_DOWN = "ArrowDown"
+const KEY_LEFT = "ArrowLeft"
+const KEY_RIGHT = "ArrowRight"
 
 addEventListener("keydown", (ev) => {
-  keysPressed[ev.key] = true;
-});
+  keysPressed[ev.key] = true
+})
 
 addEventListener("keyup", (ev) => {
-  keysPressed[ev.key] = false;
-});
+  keysPressed[ev.key] = false
+})
 
 function updatePlayerPosition() {
   let moveX = 0
@@ -162,11 +168,17 @@ function updatePlayerPosition() {
   }
 
   const newX = Math.min(
-    Math.max(game.players[game.localPlayerId].position.x + moveX * game.playerSpeed, 0),
+    Math.max(
+      game.players[game.localPlayerId].position.x + moveX * game.playerSpeed,
+      0,
+    ),
     game.worldWidth - game.localPlayerSize,
   )
   const newY = Math.min(
-    Math.max(game.players[game.localPlayerId].position.y + moveY * game.playerSpeed, 0),
+    Math.max(
+      game.players[game.localPlayerId].position.y + moveY * game.playerSpeed,
+      0,
+    ),
     game.worldHeight - game.localPlayerSize,
   )
 
@@ -176,8 +188,8 @@ function updatePlayerPosition() {
       id: game.localPlayerId,
       position: {
         x: newX,
-        y: newY
-      }
+        y: newY,
+      },
     } as Player,
   }
 
@@ -194,8 +206,8 @@ function updatePlayerPosition() {
     0,
     Math.min(
       game.players[game.localPlayerId].position.x -
-      halfCanvasWidth +
-      game.localPlayerSize / 2,
+        halfCanvasWidth +
+        game.localPlayerSize / 2,
       game.worldWidth - canvas.width,
     ),
   )
@@ -203,8 +215,8 @@ function updatePlayerPosition() {
     0,
     Math.min(
       game.players[game.localPlayerId].position.y -
-      halfCanvasHeight +
-      game.localPlayerSize / 2,
+        halfCanvasHeight +
+        game.localPlayerSize / 2,
       game.worldHeight - canvas.height,
     ),
   )
@@ -215,10 +227,10 @@ const ctx = canvas.getContext("2d") as CanvasRenderingContext2D
 let score = 0
 
 function drawScore() {
-  ctx.fillStyle = 'white'
-  ctx.strokeStyle = 'black'
+  ctx.fillStyle = "white"
+  ctx.strokeStyle = "black"
   ctx.lineWidth = 2
-  ctx.font = '20px Arial'
+  ctx.font = "20px Arial"
   ctx.strokeText(`Score: ${score}`, 10, 30)
   ctx.fillText(`Score: ${score}`, 10, 30)
 }
@@ -262,13 +274,14 @@ function drawBackground() {
   for (let y = 0; y < numTilesY; y++) {
     for (let x = 0; x < numTilesX; x++) {
       // Calculate the actual position of the tile
-      const tileX = startX + x * tileSize;
-      const tileY = startY + y * tileSize;
+      const tileX = startX + x * tileSize
+      const tileY = startY + y * tileSize
 
       // Determine the color based on the tile's position
-      const isLightTile = (Math.floor(tileX / tileSize) + Math.floor(tileY / tileSize)) % 2 === 0;
-      ctx.fillStyle = isLightTile ? lightTileColor : darkTileColor;
-      ctx.fillRect(tileX - camera.x, tileY - camera.y, tileSize, tileSize);
+      const isLightTile =
+        (Math.floor(tileX / tileSize) + Math.floor(tileY / tileSize)) % 2 === 0
+      ctx.fillStyle = isLightTile ? lightTileColor : darkTileColor
+      ctx.fillRect(tileX - camera.x, tileY - camera.y, tileSize, tileSize)
     }
   }
 }

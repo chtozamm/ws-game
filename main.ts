@@ -212,9 +212,18 @@ function updatePlayerPosition() {
 
 const ctx = canvas.getContext("2d") as CanvasRenderingContext2D
 
-function render() {
-  ctx.clearRect(0, 0, game.worldWidth, game.worldHeight)
+let score = 0
 
+function drawScore() {
+  ctx.fillStyle = 'white'
+  ctx.strokeStyle = 'black'
+  ctx.lineWidth = 2
+  ctx.font = '20px Arial'
+  ctx.strokeText(`Score: ${score}`, 10, 30)
+  ctx.fillText(`Score: ${score}`, 10, 30)
+}
+
+function drawPlayers() {
   // Calculate camera offsets
   const offsetX = game.players[game.localPlayerId].position.x - camera.x
   const offsetY = game.players[game.localPlayerId].position.y - camera.y
@@ -235,6 +244,40 @@ function render() {
       )
     }
   })
+}
+
+function drawBackground() {
+  const tileSize = 200
+  const lightTileColor = "#6b7c7f"
+  const darkTileColor = "#abc6cb"
+
+  const startX = Math.floor(camera.x / tileSize) * tileSize
+  const startY = Math.floor(camera.y / tileSize) * tileSize
+
+  // Calculate the number of tiles to draw based on the world dimensions
+  const numTilesX = Math.ceil(game.worldWidth / tileSize) + 1 // +1 to ensure we cover the right edge
+  const numTilesY = Math.ceil(game.worldHeight / tileSize) + 1 // +1 to ensure we cover the bottom edge
+
+  // Loop through the number of tiles to draw
+  for (let y = 0; y < numTilesY; y++) {
+    for (let x = 0; x < numTilesX; x++) {
+      // Calculate the actual position of the tile
+      const tileX = startX + x * tileSize;
+      const tileY = startY + y * tileSize;
+
+      // Determine the color based on the tile's position
+      const isLightTile = (Math.floor(tileX / tileSize) + Math.floor(tileY / tileSize)) % 2 === 0;
+      ctx.fillStyle = isLightTile ? lightTileColor : darkTileColor;
+      ctx.fillRect(tileX - camera.x, tileY - camera.y, tileSize, tileSize);
+    }
+  }
+}
+
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  drawBackground()
+  drawPlayers()
+  drawScore()
 }
 
 function gameLoop() {

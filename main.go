@@ -59,9 +59,14 @@ type Coordinates struct {
 type Players map[int]Player
 
 var (
-	nextID          = 0
-	players Players = make(Players)
-	mu      sync.Mutex
+	nextID                = 0
+	players       Players = make(Players)
+	mu            sync.Mutex
+	worldWidth    = 2500
+	worldHeight   = 2500
+	startPosition = Coordinates{X: float64(worldWidth / 2), Y: float64(worldHeight / 2)}
+	playerSpeed   = 5
+	playerSize    = 50
 )
 
 func handleWebsocket(w http.ResponseWriter, r *http.Request) {
@@ -88,20 +93,20 @@ func handleWebsocket(w http.ResponseWriter, r *http.Request) {
 
 	mu.Lock()
 	nextID++
-	players[nextID] = Player{Position: Coordinates{X: 200, Y: 200}}
+	players[nextID] = Player{Position: startPosition}
 	connections[conn] = nextID
 	mu.Unlock()
 
 	fmt.Printf("Player %d connected.\n", nextID)
 
-	err = conn.WriteJSON(Message{Type: "init", Data: InitMessage{PlayerID: nextID, PlayerSize: 50, PlayerSpeed: 5, Players: players, WorldWidth: 2500, WorldHeight: 2500}})
+	err = conn.WriteJSON(Message{Type: "init", Data: InitMessage{PlayerID: nextID, PlayerSize: playerSize, PlayerSpeed: playerSpeed, Players: players, WorldWidth: worldWidth, WorldHeight: worldHeight}})
 	if err != nil {
 		fmt.Printf("Error writing to connection: %v\n", err)
 	}
 
 	for conn, id := range connections {
 		if id != nextID {
-			err = conn.WriteJSON(Message{Type: "connect", Data: Player{ID: nextID, Position: Coordinates{X: 200, Y: 200}}})
+			err = conn.WriteJSON(Message{Type: "connect", Data: Player{ID: nextID, Position: startPosition}})
 			if err != nil {
 				fmt.Printf("Error writing (broadcast \"connect\") to connection: %v\n", err)
 			}
@@ -117,17 +122,14 @@ func handleWebsocket(w http.ResponseWriter, r *http.Request) {
 
 		if msg.Type == "pos_update" {
 			// fmt.Printf("Message from client: %v\n", msg)
-
 			mu.Lock()
 			players[msg.Data.ID] = Player{Position: Coordinates{X: msg.Data.Position.X, Y: msg.Data.Position.Y}}
 			mu.Unlock()
 			for conn := range connections {
-				// if id != msg.Data.ID {
 				err = conn.WriteJSON(Message{Type: "pos_update", Data: msg.Data})
 				if err != nil {
 					fmt.Printf("Error writing (broadcast \"pos_update\") to connection: %v\n", err)
 				}
-				// }
 			}
 		}
 	}

@@ -125,8 +125,16 @@ function updatePlayerPosition() {
         game.localPlayerSize / 2, game.worldHeight - canvas.height));
 }
 var ctx = canvas.getContext("2d");
-function render() {
-    ctx.clearRect(0, 0, game.worldWidth, game.worldHeight);
+var score = 0;
+function drawScore() {
+    ctx.fillStyle = 'white';
+    ctx.strokeStyle = 'black';
+    ctx.lineWidth = 2;
+    ctx.font = '20px Arial';
+    ctx.strokeText("Score: ".concat(score), 10, 30);
+    ctx.fillText("Score: ".concat(score), 10, 30);
+}
+function drawPlayers() {
     // Calculate camera offsets
     var offsetX = game.players[game.localPlayerId].position.x - camera.x;
     var offsetY = game.players[game.localPlayerId].position.y - camera.y;
@@ -140,6 +148,34 @@ function render() {
             ctx.fillRect(game.players[+playerId].position.x - camera.x, game.players[+playerId].position.y - camera.y, game.localPlayerSize, game.localPlayerSize);
         }
     });
+}
+function drawBackground() {
+    var tileSize = 200;
+    var lightTileColor = "#6b7c7f";
+    var darkTileColor = "#abc6cb";
+    var startX = Math.floor(camera.x / tileSize) * tileSize;
+    var startY = Math.floor(camera.y / tileSize) * tileSize;
+    // Calculate the number of tiles to draw based on the world dimensions
+    var numTilesX = Math.ceil(game.worldWidth / tileSize) + 1; // +1 to ensure we cover the right edge
+    var numTilesY = Math.ceil(game.worldHeight / tileSize) + 1; // +1 to ensure we cover the bottom edge
+    // Loop through the number of tiles to draw
+    for (var y = 0; y < numTilesY; y++) {
+        for (var x = 0; x < numTilesX; x++) {
+            // Calculate the actual position of the tile
+            var tileX = startX + x * tileSize;
+            var tileY = startY + y * tileSize;
+            // Determine the color based on the tile's position
+            var isLightTile = (Math.floor(tileX / tileSize) + Math.floor(tileY / tileSize)) % 2 === 0;
+            ctx.fillStyle = isLightTile ? lightTileColor : darkTileColor;
+            ctx.fillRect(tileX - camera.x, tileY - camera.y, tileSize, tileSize);
+        }
+    }
+}
+function render() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawBackground();
+    drawPlayers();
+    drawScore();
 }
 function gameLoop() {
     if (currentGameState === GameState.RUNNING) {

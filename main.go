@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math/rand/v2"
 	"net/http"
 	"sync"
 
@@ -9,12 +10,13 @@ import (
 )
 
 func main() {
+	populateCollectableItems()
 	mux := http.NewServeMux()
 	mux.Handle("/", http.FileServer(http.Dir("static")))
 	mux.HandleFunc("/ws", handleWebsocket)
 
 	server := &http.Server{
-		Addr:    "localhost:8080",
+		Addr:    "0.0.0.0:8080",
 		Handler: mux,
 	}
 
@@ -22,6 +24,14 @@ func main() {
 
 	if err := server.ListenAndServe(); err != nil {
 		fmt.Printf("Error starting server: %v\n", err)
+	}
+}
+
+func populateCollectableItems() {
+	for i := 1; i < 50; i++ {
+		x := rand.Float64() * float64(worldWidth)
+		y := rand.Float64() * float64(worldHeight)
+		collectableItems[i] = CollectableItem{Position: Coordinates{X: x, Y: y}}
 	}
 }
 
@@ -38,17 +48,25 @@ type Message struct {
 }
 
 type ClientMessage struct {
-	Type string `json:"type"`
-	Data Player `json:"data"`
+	Type string            `json:"type"`
+	Data ClientMessageData `json:"data"`
+}
+
+type ClientMessageData struct {
+	ID       int         `json:"id"`
+	Position Coordinates `json:"position"`
 }
 
 type InitMessage struct {
-	PlayerID    int     `json:"player_id"`
-	Players     Players `json:"players"`
-	WorldWidth  int     `json:"world_width"`
-	WorldHeight int     `json:"world_height"`
-	PlayerSpeed int     `json:"player_speed"`
-	PlayerSize  int     `json:"player_size"`
+	PlayerID            int              `json:"player_id"`
+	Players             Players          `json:"players"`
+	WorldWidth          int              `json:"world_width"`
+	WorldHeight         int              `json:"world_height"`
+	PlayerSpeed         int              `json:"player_speed"`
+	PlayerSize          int              `json:"player_size"`
+	CollectableItems    CollectableItems `json:"collectable_items"`
+	CollectableItemSize int              `json:"collectable_item_size"`
+	Score               int              `json:"score"`
 }
 
 type Coordinates struct {
@@ -56,17 +74,28 @@ type Coordinates struct {
 	Y float64 `json:"y"`
 }
 
-type Players map[int]Player
+type CollectableItem struct {
+	ID       int         `json:"id"`
+	Position Coordinates `json:"position"`
+}
+
+type (
+	Players          map[int]Player
+	CollectableItems map[int]CollectableItem
+)
 
 var (
-	nextID                = 0
-	players       Players = make(Players)
-	mu            sync.Mutex
-	worldWidth    = 2500
-	worldHeight   = 2500
-	startPosition = Coordinates{X: float64(worldWidth / 2), Y: float64(worldHeight / 2)}
-	playerSpeed   = 5
-	playerSize    = 50
+	nextID                      = 0
+	players             Players = make(Players)
+	mu                  sync.Mutex
+	worldWidth                           = 2500
+	worldHeight                          = 2500
+	startPosition                        = Coordinates{X: float64(worldWidth / 2), Y: float64(worldHeight / 2)}
+	playerSpeed                          = 5
+	playerSize                           = 50
+	collectableItemSize                  = 10
+	collectableItems    CollectableItems = make(CollectableItems)
+	score                                = 0
 )
 
 func handleWebsocket(w http.ResponseWriter, r *http.Request) {
@@ -99,7 +128,7 @@ func handleWebsocket(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Printf("Player %d connected.\n", nextID)
 
-	err = conn.WriteJSON(Message{Type: "init", Data: InitMessage{PlayerID: nextID, PlayerSize: playerSize, PlayerSpeed: playerSpeed, Players: players, WorldWidth: worldWidth, WorldHeight: worldHeight}})
+	err = conn.WriteJSON(Message{Type: "init", Data: InitMessage{PlayerID: nextID, PlayerSize: playerSize, PlayerSpeed: playerSpeed, Players: players, WorldWidth: worldWidth, WorldHeight: worldHeight, CollectableItemSize: collectableItemSize, Score: score, CollectableItems: collectableItems}})
 	if err != nil {
 		fmt.Printf("Error writing to connection: %v\n", err)
 	}
@@ -119,9 +148,9 @@ func handleWebsocket(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return
 		}
+		// fmt.Printf("Message from client: %v\n", msg)
 
 		if msg.Type == "pos_update" {
-			// fmt.Printf("Message from client: %v\n", msg)
 			mu.Lock()
 			players[msg.Data.ID] = Player{Position: Coordinates{X: msg.Data.Position.X, Y: msg.Data.Position.Y}}
 			mu.Unlock()
@@ -129,6 +158,19 @@ func handleWebsocket(w http.ResponseWriter, r *http.Request) {
 				err = conn.WriteJSON(Message{Type: "pos_update", Data: msg.Data})
 				if err != nil {
 					fmt.Printf("Error writing (broadcast \"pos_update\") to connection: %v\n", err)
+				}
+			}
+		}
+
+		if msg.Type == "collect_item" {
+			mu.Lock()
+			delete(collectableItems, msg.Data.ID)
+			score++
+			mu.Unlock()
+			for conn := range connections {
+				err = conn.WriteJSON(Message{Type: "collect_item", Data: msg.Data.ID})
+				if err != nil {
+					fmt.Printf("Error writing (broadcast \"collect_item\") to connection: %v\n", err)
 				}
 			}
 		}

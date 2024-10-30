@@ -3,18 +3,72 @@
 
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title></title>
   <style>
+    html,
+    body {
+      touch-action: manipulation;
+      /* Prevents double-tap zoom */
+    }
+
+    html {
+      overflow: hidden;
+    }
+
     body {
       margin: 0;
       padding: 0;
       overflow: hidden;
+    }
+
+    #joystick {
+      display: none;
+      position: absolute;
+      width: 100px;
+      height: 100px;
+      background: rgba(0, 0, 0, 0.5);
+      border-radius: 50%;
+      overflow: hidden;
+    }
+
+    #joystick-thumb {
+      position: absolute;
+      width: 50px;
+      height: 50px;
+      background: rgba(255, 255, 255, 0.7);
+      border-radius: 50%;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    .control {
+      position: fixed;
+      bottom: 20px;
+    }
+
+    #action-buttons {
+      right: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
     }
   </style>
 </head>
 
 <body>
   <canvas id="gameCanvas"></canvas>
+  <div id="joystick"
+    style="display: none; position: absolute; width: 100px; height: 100px; background: rgba(0, 0, 0, 0.5); border-radius: 50%;">
+    <div id="joystick-thumb"
+      style="position: absolute; width: 50px; height: 50px; background: rgba(255, 255, 255, 0.7); border-radius: 50%;">
+    </div>
+  </div>
+  <div id="action-buttons" class="control">
+    <button id="action1">Action 1</button>
+    <button id="action2">Action 2</button>
+  </div>
   <script src="main.js"></script>
 </body>
 

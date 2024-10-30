@@ -13,6 +13,7 @@ interface Coordinates {
 }
 
 type PlayerID = number
+type CollectableItemID = number
 
 interface Player {
   id: number
@@ -23,6 +24,10 @@ interface Players {
   [id: number]: { position: Coordinates }
 }
 
+interface CollectableItems {
+  [id: number]: { position: Coordinates }
+}
+
 interface InitData {
   player_id: number
   player_size: number
@@ -30,15 +35,18 @@ interface InitData {
   world_width: number
   world_height: number
   players: Players
+  collectable_items: CollectableItems
+  collectable_item_size: number
+  score: number
 }
 
 interface ServerMessage {
-  type: "init" | "connect" | "disconnect" | "pos_update"
+  type: "init" | "connect" | "disconnect" | "pos_update" | "collect_item"
   data: any
 }
 
 interface ClientMessage {
-  type: "pos_update"
+  type: "pos_update" | "collect_item"
   data: any
 }
 
@@ -49,6 +57,9 @@ interface Game {
   worldHeight: number
   worldWidth: number
   players: Players
+  collectableItems: CollectableItems
+  collectableItemSize: number
+  score: number
 }
 
 const game: Game = {
@@ -58,6 +69,9 @@ const game: Game = {
   worldHeight: 0,
   worldWidth: 0,
   players: {},
+  collectableItems: {},
+  collectableItemSize: 0,
+  score: 0,
 }
 
 function setPlayer(playerId: PlayerID, position: Coordinates) {
@@ -79,6 +93,9 @@ conn.onmessage = (ev) => {
       game.worldWidth = initData.world_width
       game.worldHeight = initData.world_height
       game.players = initData.players
+      game.collectableItems = initData.collectable_items
+      game.collectableItemSize = initData.collectable_item_size
+      game.score = initData.score
       currentGameState = GameState.RUNNING
       break
     case "connect":
@@ -97,6 +114,10 @@ conn.onmessage = (ev) => {
         x: posUpdateData.position.x,
         y: posUpdateData.position.y,
       })
+      break
+    case "collect_item":
+      delete game.collectableItems[message.data as CollectableItemID]
+      game.score++
       break
   }
 }
@@ -128,6 +149,142 @@ addEventListener("keydown", (ev) => {
 addEventListener("keyup", (ev) => {
   keysPressed[ev.key] = false
 })
+
+const joystick = document.getElementById("joystick");
+let joystickActive = false;
+let joystickCenter = { x: 0, y: 0 };
+const joystickThumb = document.getElementById("joystick-thumb");
+let moveX = 0;
+let moveY = 0;
+
+addEventListener('gesturestart', function(e) {
+  e.preventDefault();
+});
+
+const action1Button = document.getElementById('action1') as HTMLButtonElement;
+const action2Button = document.getElementById('action2') as HTMLButtonElement;
+
+action1Button.addEventListener('click', () => {
+  // Implement Action 1 logic
+  console.log('Action 1 triggered');
+});
+
+action2Button.addEventListener('click', () => {
+  // Implement Action 2 logic
+  console.log('Action 2 triggered');
+});
+
+addEventListener("touchstart", (ev) => {
+  ev.preventDefault()
+
+  const touch = ev.touches[0];
+  joystickCenter.x = touch.clientX;
+  joystickCenter.y = touch.clientY;
+
+  joystick.style.left = `${joystickCenter.x - 50}px`; // Center the joystick
+  joystick.style.top = `${joystickCenter.y - 50}px`;
+  joystick.style.display = "block"; // Show the joystick
+  joystickActive = true;
+
+  // Reset thumb position
+  joystickThumb.style.left = "50%";
+  joystickThumb.style.top = "50%";
+});
+
+addEventListener("touchmove", (ev) => {
+  if (!joystickActive) return;
+
+  const touch = ev.touches[0];
+  let dx = touch.clientX - joystickCenter.x;
+  let dy = touch.clientY - joystickCenter.y;
+
+  const length = Math.sqrt(dx * dx + dy * dy);
+  const maxDistance = 50; // Max distance from the center
+
+  if (length > maxDistance) {
+    dx = (dx / length) * maxDistance;
+    dy = (dy / length) * maxDistance;
+  }
+
+  // Update thumb position
+  joystickThumb.style.left = `${50 + (dx / maxDistance) * 50}%`; // Centered at 50%
+  joystickThumb.style.top = `${50 + (dy / maxDistance) * 50}%`; // Centered at 50%
+
+  // Update player movement based on joystick position
+  moveX = dx / maxDistance;
+  moveY = dy / maxDistance;
+});
+
+addEventListener("touchend", () => {
+  joystick.style.display = "none"; // Hide the joystick
+  joystickActive = false;
+
+  // Reset thumb position
+  joystickThumb.style.left = "50%";
+  joystickThumb.style.top = "50%";
+
+  // Reset movement
+  moveX = 0;
+  moveY = 0;
+});
+
+
+function updatePlayerPositionWithJoystick() {
+  if (!joystickActive) return
+
+  const player = game.players[game.localPlayerId];
+
+  // Calculate new position based on joystick input
+  const newX = Math.min(
+    Math.max(
+      player.position.x + moveX * game.playerSpeed,
+      0,
+    ),
+    game.worldWidth - game.localPlayerSize,
+  );
+  const newY = Math.min(
+    Math.max(
+      player.position.y + moveY * game.playerSpeed,
+      0,
+    ),
+    game.worldHeight - game.localPlayerSize,
+  );
+
+  const msg: ClientMessage = {
+    type: "pos_update",
+    data: {
+      id: game.localPlayerId,
+      position: {
+        x: newX,
+        y: newY,
+      },
+    } as Player,
+  };
+
+  // Send player position if moved
+  if (moveX !== 0 || moveY !== 0) {
+    conn.send(JSON.stringify(msg));
+  }
+
+  // Update camera position to center on the player (same as before)
+  const halfCanvasWidth = canvas.width / 2;
+  const halfCanvasHeight = canvas.height / 2;
+
+  camera.x = Math.max(
+    0,
+    Math.min(
+      player.position.x - halfCanvasWidth + game.localPlayerSize / 2,
+      game.worldWidth - canvas.width,
+    ),
+  );
+  camera.y = Math.max(
+    0,
+    Math.min(
+      player.position.y - halfCanvasHeight + game.localPlayerSize / 2,
+      game.worldHeight - canvas.height,
+    ),
+  );
+}
 
 function updatePlayerPosition() {
   let moveX = 0
@@ -206,8 +363,8 @@ function updatePlayerPosition() {
     0,
     Math.min(
       game.players[game.localPlayerId].position.x -
-        halfCanvasWidth +
-        game.localPlayerSize / 2,
+      halfCanvasWidth +
+      game.localPlayerSize / 2,
       game.worldWidth - canvas.width,
     ),
   )
@@ -215,8 +372,8 @@ function updatePlayerPosition() {
     0,
     Math.min(
       game.players[game.localPlayerId].position.y -
-        halfCanvasHeight +
-        game.localPlayerSize / 2,
+      halfCanvasHeight +
+      game.localPlayerSize / 2,
       game.worldHeight - canvas.height,
     ),
   )
@@ -224,16 +381,27 @@ function updatePlayerPosition() {
 
 const ctx = canvas.getContext("2d") as CanvasRenderingContext2D
 
-let score = 0
-
 function drawScore() {
   ctx.fillStyle = "white"
   ctx.strokeStyle = "black"
   ctx.lineWidth = 2
   ctx.font = "20px Arial"
-  ctx.strokeText(`Score: ${score}`, 10, 30)
-  ctx.fillText(`Score: ${score}`, 10, 30)
+  ctx.strokeText(`Score: ${game.score}`, 10, 30)
+  ctx.fillText(`Score: ${game.score}`, 10, 30)
 }
+
+function drawCollectableItems() {
+  ctx.fillStyle = "orange"
+  Object.keys(game.collectableItems).forEach((itemId) => {
+    ctx.fillRect(
+      game.collectableItems[+itemId].position.x - camera.x,
+      game.collectableItems[+itemId].position.y - camera.y,
+      game.collectableItemSize,
+      game.collectableItemSize,
+    )
+  })
+}
+
 
 function drawPlayers() {
   // Calculate camera offsets
@@ -289,13 +457,45 @@ function drawBackground() {
 function render() {
   ctx.clearRect(0, 0, canvas.width, canvas.height)
   drawBackground()
+  drawCollectableItems()
   drawPlayers()
   drawScore()
+}
+
+function detectCollision() {
+  const player = game.players[game.localPlayerId];
+  const playerX = player.position.x;
+  const playerY = player.position.y;
+
+  const msg: ClientMessage = {
+    type: "collect_item",
+    data: {
+      id: 0,
+    },
+  };
+
+  for (let collectableItemId in game.collectableItems) {
+    const collectableItem = game.collectableItems[collectableItemId]
+    if (
+      playerX < collectableItem.position.x + game.collectableItemSize &&
+      playerX + game.localPlayerSize > collectableItem.position.x &&
+      playerY < collectableItem.position.y + game.collectableItemSize &&
+      playerY + game.localPlayerSize > collectableItem.position.y
+    ) {
+      console.log("Collision detected")
+      msg.data.id = +collectableItemId
+    }
+  }
+  if (msg.data.id > 0) {
+    conn.send(JSON.stringify(msg))
+  }
 }
 
 function gameLoop() {
   if (currentGameState === GameState.RUNNING) {
     updatePlayerPosition()
+    updatePlayerPositionWithJoystick();
+    detectCollision()
     render()
   }
   requestAnimationFrame(gameLoop)
